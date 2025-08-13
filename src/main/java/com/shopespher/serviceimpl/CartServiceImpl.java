@@ -3,10 +3,12 @@ package com.shopespher.serviceimpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shopespher.dto.APIResponse;
 import com.shopespher.dto.CartDTO;
+import com.shopespher.dto.UserResponseDTO;
 import com.shopespher.entity.Cart;
 import com.shopespher.entity.CartItem;
 import com.shopespher.entity.Product;
 import com.shopespher.feignservice.ProductFeignClient;
+import com.shopespher.feignservice.UserFeignClient;
 import com.shopespher.repository.CartItemRepository;
 import com.shopespher.repository.CartRepository;
 import com.shopespher.service.CartService;
@@ -32,6 +34,9 @@ public class CartServiceImpl implements CartService {
 
     @Autowired
     private ProductFeignClient productFeignClient;
+
+    @Autowired
+    private UserFeignClient userFeignClient;
 
     @Override
     public CartDTO createCart(Long userId) {
@@ -83,7 +88,8 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
-    public CartDTO addItemToCart(Long userId, String productId, Integer quantity) {
+    public CartDTO addItemToCart(String email, String productId, Integer quantity) {
+        Long userId = 0L;
         try {
             APIResponse response = productFeignClient.getProductById(productId);
             Product product = objectMapper.convertValue(response.getBody(), Product.class);
@@ -92,21 +98,33 @@ public class CartServiceImpl implements CartService {
                 throw new RuntimeException("Product not found with ID: " + productId);
             }
 
-            // Find existing cart
-            Cart cart = cartRepository.findByUserId(userId)
-                    .orElseThrow(() -> new RuntimeException("Cart not found for userId: " + userId));
+            APIResponse userByEmail = userFeignClient.getUserByEmail(email);
+            UserResponseDTO user = objectMapper.convertValue(userByEmail.getBody(), UserResponseDTO.class);
 
-            // Check if item already exists in cart
+            Cart cart = cartRepository.findByUserId(userId).orElse(null);
+
+            if (cart == null) {
+                // Create new cart
+                cart = new Cart();
+                cart.setUserId(userId);
+                cart.setCreatedAt(LocalDateTime.now());
+                cart.setUpdatedAt(LocalDateTime.now());
+                cart.setTotalPrice(0.0);
+                cart = cartRepository.save(cart);
+            }
+
             CartItem existingItem = cart.getItems().stream()
                     .filter(item -> item.getProductId().equals(productId))
                     .findFirst()
                     .orElse(null);
 
             if (existingItem != null) {
+                // Product already in cart → update qty
                 existingItem.setQuantity(existingItem.getQuantity() + quantity);
                 existingItem.setSubTotal(existingItem.getPrice() * existingItem.getQuantity());
                 cartItemRepository.save(existingItem);
             } else {
+                // New product in cart
                 CartItem newItem = new CartItem();
                 newItem.setCart(cart);
                 newItem.setProductId(productId);
@@ -117,21 +135,18 @@ public class CartServiceImpl implements CartService {
                 newItem.setAddedAt(LocalDateTime.now());
 
                 cart.getItems().add(newItem);
-                CartItem save = cartItemRepository.save(newItem);
+                cartItemRepository.save(newItem);
             }
 
-            // Update cart total
             updateCartTotalPrice(cart);
             cart.setUpdatedAt(LocalDateTime.now());
             cartRepository.save(cart);
 
-            // Convert to DTO
             return mapToDTO(cart, product);
         } catch (Exception e) {
             throw new RuntimeException("Unable to add item to cart for userId: " + userId, e);
         }
     }
-
 
     @Override
     public CartDTO updateCartItem(Long cartId, Long itemId, Integer quantity) {

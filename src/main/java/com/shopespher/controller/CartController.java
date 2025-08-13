@@ -67,11 +67,11 @@ public class CartController {
 
     @PostMapping("/addItem")
     public APIResponse<CartDTO> addItemToCart(
-            @RequestParam Long userId,
+            @RequestParam String email,
             @RequestParam String productId,
             @RequestParam Integer quantity) {
         try {
-            CartDTO updatedCart = cartService.addItemToCart(userId, productId, quantity);
+            CartDTO updatedCart = cartService.addItemToCart(email, productId, quantity);
             return APIResponse.<CartDTO>builder()
                     .status(HttpStatus.OK)
                     .body(updatedCart)

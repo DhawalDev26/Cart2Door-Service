@@ -10,7 +10,7 @@ public interface CartService {
 
     CartDTO getCartByUserId(Long userId);
 
-    CartDTO addItemToCart(Long userId, String productId, Integer quantity);
+    CartDTO addItemToCart(String email, String productId, Integer quantity);
 
     CartDTO updateCartItem(Long cartId, Long itemId, Integer quantity);
 
